@@ -1,283 +1,877 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>✋ Hand-Controlled Webcam</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{background:#0a0a0a;color:#fff;font-family:'Segoe UI',sans-serif;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center}
-    #app{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}
-    #rawVideo{position:absolute;top:-9999px;left:-9999px;width:640px;height:480px}
-    #displayCanvas{width:100%;height:100%;object-fit:contain;display:block}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✋ Hand Magic — Gesture Art Canvas</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #03030f; }
 
-    /* ── HUD ── */
-    #gestureLabel{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:2px solid #00e5ff;border-radius:30px;padding:10px 28px;font-size:22px;font-weight:700;letter-spacing:2px;color:#00e5ff;text-transform:uppercase;white-space:nowrap;transition:opacity .3s;text-shadow:0 0 10px #00e5ff;pointer-events:none}
-    #zoomIndicator{position:absolute;top:20px;right:20px;background:rgba(0,0,0,.6);border:2px solid #ff6f00;border-radius:12px;padding:8px 18px;font-size:16px;font-weight:600;color:#ff6f00;pointer-events:none}
-    #filterLabel{position:absolute;top:20px;left:20px;background:rgba(0,0,0,.6);border:2px solid #7c4dff;border-radius:12px;padding:8px 18px;font-size:16px;font-weight:600;color:#7c4dff;pointer-events:none}
-    #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .1s}
-    #swipeArrow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:72px;opacity:0;pointer-events:none;transition:opacity .2s;text-shadow:0 0 20px rgba(255,255,255,.8)}
-    #gallery{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);display:flex;gap:8px;max-width:90vw;overflow-x:auto;padding:4px}
-    #gallery img{height:52px;border-radius:8px;border:2px solid #00e5ff;cursor:pointer;transition:transform .2s;flex-shrink:0}
-    #gallery img:hover{transform:scale(1.15)}
-    #help{position:absolute;top:60px;left:20px;background:rgba(0,0,0,.55);border-radius:12px;padding:12px 16px;font-size:13px;line-height:1.9;color:#ccc;max-width:230px;pointer-events:none}
-    #help b{color:#00e5ff}
+canvas { position: fixed; top: 0; left: 0; width: 100vw !important; height: 100vh !important; }
+#camCanvas     { z-index: 1; opacity: 0.18; }
+#persistCanvas { z-index: 2; }
+#animCanvas    { z-index: 3; }
+#handCanvas    { z-index: 4; }
 
-    /* ── Spinner ── */
-    .spinner{width:60px;height:60px;border:5px solid #222;border-top-color:#00e5ff;border-radius:50%;animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
+/* ── Mode badge ── */
+#modeBadge {
+  position: fixed; z-index: 20;
+  bottom: 28px; left: 50%; transform: translateX(-50%);
+  padding: 13px 38px; border-radius: 50px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 21px; font-weight: 700; color: #fff;
+  background: rgba(0,0,0,0.55);
+  border: 2px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(14px);
+  white-space: nowrap;
+  transition: color .35s, border-color .35s, box-shadow .35s;
+  pointer-events: none;
+  letter-spacing: .5px;
+}
 
-    /* ── Loading ── */
-    #loading{position:absolute;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;z-index:100;font-size:20px;color:#00e5ff}
+/* ── Guide ── */
+#guide {
+  position: fixed; z-index: 20;
+  top: 16px; right: 16px;
+  background: rgba(0,0,0,0.52);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 18px; padding: 16px 20px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px; line-height: 2.1;
+  color: rgba(255,255,255,.72);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+#guide strong { color: #00e5ff; display: block; margin-bottom: 4px; font-size: 14px; }
 
-    /* ── Start Button ── */
-    #startBtn{position:absolute;bottom:36%;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#00e5ff,#7c4dff);color:#fff;border:none;border-radius:40px;padding:16px 44px;font-size:20px;font-weight:700;cursor:pointer;letter-spacing:1px;z-index:101;box-shadow:0 4px 30px rgba(0,229,255,.4);display:none}
-    #startBtn:hover{opacity:.9;transform:translateX(-50%) scale(1.05)}
+/* ── Clear button ── */
+#clearBtn {
+  position: fixed; z-index: 20;
+  top: 16px; left: 16px;
+  background: rgba(0,0,0,0.48);
+  border: 1px solid rgba(255,100,100,0.3);
+  color: rgba(255,160,160,.85);
+  padding: 10px 22px; border-radius: 26px;
+  font-size: 14px; font-family: 'Segoe UI', system-ui, sans-serif;
+  cursor: pointer; backdrop-filter: blur(12px); transition: all .2s;
+}
+#clearBtn:hover { background: rgba(255,50,50,0.18); border-color: rgba(255,100,100,0.55); }
 
-    /* ── Redirect screen (file:// fallback) ── */
-    #redirectScreen{position:absolute;inset:0;background:linear-gradient(135deg,#0a0a0a,#1a0a2e);display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px;z-index:200;padding:30px;text-align:center}
-    #redirectScreen h1{font-size:40px;background:linear-gradient(135deg,#00e5ff,#7c4dff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    #redirectScreen p{color:#aaa;font-size:16px;max-width:500px;line-height:1.7}
-    #redirectScreen .live-link{display:inline-block;background:linear-gradient(135deg,#00e5ff,#7c4dff);color:#fff;text-decoration:none;padding:16px 40px;border-radius:40px;font-size:18px;font-weight:700;letter-spacing:1px;box-shadow:0 4px 30px rgba(0,229,255,.4);transition:transform .2s}
-    #redirectScreen .live-link:hover{transform:scale(1.05)}
-    #redirectScreen .alt{color:#555;font-size:14px}
-    #redirectScreen .alt a{color:#7c4dff;text-decoration:none}
-    .badge-row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:4px}
-    .badge{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:8px 18px;font-size:14px;color:#ccc}
-  </style>
+/* ── Loading ── */
+#loading {
+  position: fixed; inset: 0; z-index: 100;
+  background: #03030f;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 22px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+.spinner {
+  width: 58px; height: 58px;
+  border: 4px solid rgba(255,255,255,.08);
+  border-top-color: #c44dff;
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loadText { color: #c44dff; font-size: 19px; font-weight: 600; }
+#loadSub  { color: rgba(255,255,255,.28); font-size: 13px; }
+
+/* ── Start screen ── */
+#startScreen {
+  position: fixed; inset: 0; z-index: 90;
+  background: radial-gradient(ellipse at 50% 40%, #140830 0%, #03030f 65%);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center; gap: 18px;
+  font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 24px;
+}
+#startScreen h1 {
+  font-size: clamp(38px, 9vw, 80px); font-weight: 900;
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44dff 40%, #00e5ff 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  line-height: 1.1; margin-bottom: 4px;
+}
+#startScreen .sub { color: rgba(255,255,255,.45); font-size: 17px; max-width: 460px; line-height: 1.65; }
+#startScreen .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 520px; margin: 10px 0; }
+.chip {
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 22px; padding: 8px 16px; font-size: 14px; color: rgba(255,255,255,.72);
+}
+#startBtn {
+  background: linear-gradient(135deg, #c44dff, #00e5ff);
+  color: #fff; border: none; border-radius: 50px;
+  padding: 17px 52px; font-size: 20px; font-weight: 700;
+  cursor: pointer; letter-spacing: .5px;
+  box-shadow: 0 4px 40px rgba(196,77,255,.45);
+  transition: transform .2s, box-shadow .2s; font-family: inherit;
+  margin-top: 6px;
+}
+#startBtn:hover { transform: scale(1.06); box-shadow: 0 6px 55px rgba(196,77,255,.55); }
+
+/* ── file:// screen ── */
+#fileScreen {
+  position: fixed; inset: 0; z-index: 100;
+  background: radial-gradient(ellipse at 50% 40%, #140830, #03030f);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center; gap: 22px;
+  font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 30px;
+}
+#fileScreen h1 { font-size: 46px; background: linear-gradient(135deg,#c44dff,#00e5ff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+#fileScreen p  { color: rgba(255,255,255,.45); max-width: 480px; line-height: 1.75; font-size: 15px; }
+.liveBtn {
+  display: inline-block;
+  background: linear-gradient(135deg, #c44dff, #00e5ff);
+  color: #fff; text-decoration: none;
+  padding: 16px 46px; border-radius: 50px; font-size: 19px; font-weight: 700;
+  box-shadow: 0 4px 32px rgba(196,77,255,.4); transition: transform .2s;
+}
+.liveBtn:hover { transform: scale(1.05); }
+</style>
 </head>
 <body>
-<div id="app">
-  <video id="rawVideo" autoplay playsinline muted></video>
-  <canvas id="displayCanvas"></canvas>
 
-  <!-- HUD -->
-  <div id="gestureLabel">✋ Show your hand</div>
-  <div id="zoomIndicator">🔍 Zoom: 1.0×</div>
-  <div id="filterLabel">🎨 Normal</div>
-  <div id="flash"></div>
-  <div id="swipeArrow"></div>
-  <div id="gallery"></div>
-  <div id="help">
-    <b>✋ Hand Gestures</b><br>
-    ✊ <b>Fist</b> — 📸 Capture photo<br>
-    ✋ <b>Swipe L/R</b> — 🎨 Change filter<br>
-    ☝️ <b>Point UP</b> — 🔍 Zoom in<br>
-    👇 <b>Point DOWN</b> — 🔍 Zoom out<br>
-    🤏 <b>Pinch</b> — Fine zoom<br>
-    ✌️ <b>Peace</b> — 🔄 Reset zoom<br>
-  </div>
+<!-- Canvas stack (bottom → top) -->
+<canvas id="camCanvas"></canvas>
+<canvas id="persistCanvas"></canvas>
+<canvas id="animCanvas"></canvas>
+<canvas id="handCanvas"></canvas>
 
-  <!-- Loading -->
-  <div id="loading"><div class="spinner"></div><div>Loading Hand AI…</div></div>
-  <button id="startBtn">🎬 Start Camera</button>
+<!-- HUD -->
+<div id="modeBadge">✋ Show your hand</div>
+<div id="guide">
+  <strong>🎨 Gesture Guide</strong>
+  ☝️ <b>Point</b> — Rainbow paint trail<br>
+  ✋ <b>Open palm</b> — Bloom flowers 🌸<br>
+  ✌️ <b>Peace</b> — Draw geometry 🔺<br>
+  ✊ <b>Fist</b> — Particle burst 💥<br>
+  🤏 <b>Pinch</b> — Ripple rings 💧<br>
+  🖐️ <b>All spread</b> — Star dust ✨
+</div>
+<button id="clearBtn">🗑️ Clear &nbsp;<small style="opacity:.55">Space</small></button>
 
-  <!-- file:// fallback screen -->
-  <div id="redirectScreen">
-    <h1>✋ Hand-Cam</h1>
-    <p>This app uses your <b>webcam + AI hand tracking</b>.<br>
-    Browsers block webcam when opening a local file.<br>
-    Use the live link below — it works instantly, no install needed!</p>
-
-    <a class="live-link" href="https://abhineet22singh.github.io/hand-controlled-webcam/" target="_blank">
-      🚀 Open Live App
+<!-- file:// fallback -->
+<div id="fileScreen">
+  <h1>✋ Hand Magic</h1>
+  <p>Webcam requires HTTPS. Open the live version instead — works instantly, no install needed!</p>
+  <a class="liveBtn" href="https://abhineet22singh.github.io/hand-controlled-webcam/" target="_blank">🚀 Open Live App</a>
+  <p style="color:#333;font-size:13px">
+    <a href="https://github.com/Abhineet22singh/hand-controlled-webcam" style="color:#7c4dff;text-decoration:none">
+      github.com/Abhineet22singh/hand-controlled-webcam
     </a>
-
-    <div class="badge-row">
-      <span class="badge">✋ Gesture Zoom</span>
-      <span class="badge">🎨 8 Filters</span>
-      <span class="badge">📸 Capture Photos</span>
-      <span class="badge">👈 Swipe Navigation</span>
-    </div>
-
-    <p class="alt">
-      or open Chrome with <code style="color:#00e5ff">--allow-file-access-from-files</code> flag<br>
-      Source: <a href="https://github.com/Abhineet22singh/hand-controlled-webcam" target="_blank">github.com/Abhineet22singh/hand-controlled-webcam</a>
-    </p>
-  </div>
+  </p>
 </div>
 
+<!-- Loading -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loadText">Loading Hand Magic AI…</div>
+  <div id="loadSub">Powered by MediaPipe Hands</div>
+</div>
+
+<!-- Start screen -->
+<div id="startScreen">
+  <h1>✋ Hand Magic<br>Art Canvas</h1>
+  <p class="sub">Paint glowing trails, bloom flowers, fire particles, and sculpt geometry — all with your bare hands.</p>
+  <div class="chips">
+    <span class="chip">☝️ Rainbow Trails</span>
+    <span class="chip">✋ Blooming Flowers</span>
+    <span class="chip">✌️ Geometry Shapes</span>
+    <span class="chip">✊ Particle Burst</span>
+    <span class="chip">🤏 Ripple Rings</span>
+    <span class="chip">🖐️ Star Dust</span>
+  </div>
+  <button id="startBtn">🎬 Start Magic</button>
+</div>
+
+<!-- Hidden webcam video -->
+<video id="rawVideo" autoplay playsinline muted
+  style="position:fixed;top:-9999px;left:-9999px;width:640px;height:480px"></video>
+
+<!-- MediaPipe CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
 <script>
-// ── Detect file:// and show redirect screen ──────────────────
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+//  file:// guard
+// ═══════════════════════════════════════════════════════════════
 if (location.protocol === 'file:') {
-  document.getElementById('loading').style.display        = 'none';
-  document.getElementById('redirectScreen').style.display = 'flex';
-  throw new Error('file:// — showing redirect screen');
+  document.getElementById('loading').style.display    = 'none';
+  document.getElementById('fileScreen').style.display = 'flex';
+  throw new Error('file:// redirect shown');
 }
 
-// ── State ─────────────────────────────────────────────────────
-const FILTERS   = ['Normal','Greyscale','Sepia','Invert','Warm','Cool','Vignette','Sketch'];
-let filterIndex = 0, zoomLevel = 1.0;
-const ZOOM_MIN = 0.5, ZOOM_MAX = 4.0, ZOOM_STEP = 0.04;
-let lastGesture='', gestureTimer=null, captureReady=true;
-let lastHandX=null, swipeBlocked=false, pinchPrev=null;
+// ═══════════════════════════════════════════════════════════════
+//  Canvas setup
+// ═══════════════════════════════════════════════════════════════
+const camCanvas     = document.getElementById('camCanvas');
+const persistCanvas = document.getElementById('persistCanvas');
+const animCanvas    = document.getElementById('animCanvas');
+const handCanvas    = document.getElementById('handCanvas');
+const cc = camCanvas.getContext('2d');
+const pc = persistCanvas.getContext('2d');
+const ac = animCanvas.getContext('2d');
+const hc = handCanvas.getContext('2d');
+const rawVideo = document.getElementById('rawVideo');
 
-// ── DOM ───────────────────────────────────────────────────────
-const video         = document.getElementById('rawVideo');
-const displayCanvas = document.getElementById('displayCanvas');
-const ctx           = displayCanvas.getContext('2d');
-const gestureLabel  = document.getElementById('gestureLabel');
-const zoomIndicator = document.getElementById('zoomIndicator');
-const filterLabel   = document.getElementById('filterLabel');
-const flash         = document.getElementById('flash');
-const swipeArrow    = document.getElementById('swipeArrow');
-const gallery       = document.getElementById('gallery');
-const loading       = document.getElementById('loading');
-const startBtn      = document.getElementById('startBtn');
+let W = 0, H = 0;
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  [camCanvas, persistCanvas, animCanvas, handCanvas].forEach(c => {
+    c.width = W; c.height = H;
+  });
+}
+resize();
+window.addEventListener('resize', resize);
 
-function resizeCanvas(){ displayCanvas.width=window.innerWidth; displayCanvas.height=window.innerHeight; }
-resizeCanvas(); window.addEventListener('resize', resizeCanvas);
+// ═══════════════════════════════════════════════════════════════
+//  Shared state
+// ═══════════════════════════════════════════════════════════════
+let particles  = [];
+let ripples    = [];
+let flowers    = [];
+let shapes     = [];
+let trail      = [];        // paint trail points
 
-// ── Gesture detection ─────────────────────────────────────────
-function ext(lm,tip,pip){ return lm[tip].y < lm[pip].y; }
-function detectGesture(lm){
-  const iUp=ext(lm,8,6), mUp=ext(lm,12,10), rUp=ext(lm,16,14), pUp=ext(lm,20,18);
-  if(!iUp&&!mUp&&!rUp&&!pUp) return 'FIST';
-  if(iUp&&mUp&&rUp&&pUp)     return 'OPEN';
-  if(iUp&&!mUp&&!rUp&&!pUp){
-    const dy=lm[8].y-lm[5].y;
-    return dy<-0.08?'POINT_UP':dy>0.05?'POINT_DOWN':'POINT';
+let currentMode  = 'NONE';
+let prevMode     = '';
+let frameCount   = 0;
+let globalHue    = 0;
+
+// Smoothed landmarks
+let sPalm = { x: 0, y: 0 };
+let sTip8 = { x: 0, y: 0 };  // index tip
+let sTip12= { x: 0, y: 0 };  // middle tip
+let sTip4 = { x: 0, y: 0 };  // thumb tip
+
+// ═══════════════════════════════════════════════════════════════
+//  Utilities
+// ═══════════════════════════════════════════════════════════════
+const lerp = (a, b, t) => a + (b - a) * t;
+const lmX  = lm => (1 - lm.x) * W;
+const lmY  = lm => lm.y * H;
+const getHue = x => (x / W) * 300 + 30;  // 30-330 rainbow range
+
+function setGlow(ctx, color, blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+function noGlow(ctx)               { ctx.shadowBlur = 0; }
+
+function drawStar(ctx, cx, cy, spikes, rOut, rIn) {
+  let angle = -Math.PI / 2;
+  const step = Math.PI / spikes;
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(angle) * rOut, cy + Math.sin(angle) * rOut);
+  for (let i = 0; i < spikes; i++) {
+    angle += step;
+    ctx.lineTo(cx + Math.cos(angle) * rIn,  cy + Math.sin(angle) * rIn);
+    angle += step;
+    ctx.lineTo(cx + Math.cos(angle) * rOut, cy + Math.sin(angle) * rOut);
   }
-  if(iUp&&mUp&&!rUp&&!pUp)   return 'PEACE';
-  const d=Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
-  if(d<0.06&&!mUp&&!rUp&&!pUp) return 'PINCH';
-  return 'UNKNOWN';
+  ctx.closePath();
 }
 
-// ── Filters ───────────────────────────────────────────────────
-function applyFilter(d, filter){
-  const px=d.data;
-  if(filter==='Greyscale'){
-    for(let i=0;i<px.length;i+=4){const g=.299*px[i]+.587*px[i+1]+.114*px[i+2];px[i]=px[i+1]=px[i+2]=g;}
-  } else if(filter==='Sepia'){
-    for(let i=0;i<px.length;i+=4){const r=px[i],g=px[i+1],b=px[i+2];px[i]=Math.min(255,r*.393+g*.769+b*.189);px[i+1]=Math.min(255,r*.349+g*.686+b*.168);px[i+2]=Math.min(255,r*.272+g*.534+b*.131);}
-  } else if(filter==='Invert'){
-    for(let i=0;i<px.length;i+=4){px[i]=255-px[i];px[i+1]=255-px[i+1];px[i+2]=255-px[i+2];}
-  } else if(filter==='Warm'){
-    for(let i=0;i<px.length;i+=4){px[i]=Math.min(255,px[i]*1.15);px[i+1]=Math.min(255,px[i+1]*1.05);px[i+2]=Math.min(255,px[i+2]*.85);}
-  } else if(filter==='Cool'){
-    for(let i=0;i<px.length;i+=4){px[i]=Math.min(255,px[i]*.85);px[i+1]=Math.min(255,px[i+1]*1.02);px[i+2]=Math.min(255,px[i+2]*1.2);}
-  } else if(filter==='Vignette'){
-    const W=d.width,H=d.height,cx=W/2,cy=H/2,mx=Math.sqrt(cx*cx+cy*cy);
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4,v=1-Math.pow(Math.sqrt((x-cx)**2+(y-cy)**2)/mx,1.5)*.8;px[i]*=v;px[i+1]*=v;px[i+2]*=v;}
-  } else if(filter==='Sketch'){
-    for(let i=0;i<px.length;i+=4){const g=.299*px[i]+.587*px[i+1]+.114*px[i+2];const e=Math.max(0,255-g*2.5);px[i]=px[i+1]=px[i+2]=e;}
+// ═══════════════════════════════════════════════════════════════
+//  Gesture Detection
+// ═══════════════════════════════════════════════════════════════
+const ext = (lm, tip, pip) => lm[tip].y < lm[pip].y;
+
+function detectGesture(lm) {
+  const i = ext(lm, 8,  6);
+  const m = ext(lm, 12, 10);
+  const r = ext(lm, 16, 14);
+  const p = ext(lm, 20, 18);
+
+  // Pinch: thumb & index very close
+  const pd = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+  if (pd < 0.055 && !m && !r && !p) return 'PINCH';
+
+  if (!i && !m && !r && !p) return 'FIST';
+  if ( i &&  m &&  r &&  p) return 'OPEN';
+  if ( i && !m && !r && !p) return 'POINT';
+  if ( i &&  m && !r && !p) return 'PEACE';
+  return 'OTHER';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Paint Trail
+// ═══════════════════════════════════════════════════════════════
+const TRAIL_MAX = 180;
+
+function pushTrailPoint(x, y, h) {
+  trail.unshift({ x, y, hue: h });
+  if (trail.length > TRAIL_MAX) trail.pop();
+}
+
+function drawTrail() {
+  if (trail.length < 2) return;
+
+  // Draw smooth ribbon
+  for (let i = 0; i < trail.length - 1; i++) {
+    const a = trail[i], b = trail[i + 1];
+    const t = 1 - i / trail.length;
+    const w = t * 14;
+    const alpha = t * 0.85;
+
+    pc.save();
+    pc.strokeStyle = `hsla(${a.hue},100%,65%,${alpha})`;
+    pc.lineWidth   = w;
+    pc.lineCap     = 'round';
+    setGlow(pc, `hsl(${a.hue},100%,65%)`, 22);
+    pc.beginPath();
+    pc.moveTo(a.x, a.y);
+    pc.lineTo(b.x, b.y);
+    pc.stroke();
+    pc.restore();
   }
-  return d;
-}
 
-// ── Render ────────────────────────────────────────────────────
-function renderFrame(v, res){
-  const W=displayCanvas.width, H=displayCanvas.height;
-  const vW=v.videoWidth||640, vH=v.videoHeight||480;
-  const srcW=vW/zoomLevel, srcH=vH/zoomLevel;
-  const srcX=(vW-srcW)/2, srcY=(vH-srcH)/2;
+  // Glowing orb at fingertip
+  const tip = trail[0];
+  const g = ac.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 28);
+  g.addColorStop(0,   `hsla(${tip.hue},100%,97%,0.95)`);
+  g.addColorStop(0.35,`hsla(${tip.hue},100%,70%,0.55)`);
+  g.addColorStop(1,   `hsla(${tip.hue},100%,60%,0)`);
+  ac.fillStyle = g;
+  ac.beginPath();
+  ac.arc(tip.x, tip.y, 28, 0, Math.PI * 2);
+  ac.fill();
 
-  const off=document.createElement('canvas'); off.width=vW; off.height=vH;
-  const oc=off.getContext('2d'); oc.drawImage(v,0,0,vW,vH);
-  const filter=FILTERS[filterIndex];
-  if(filter!=='Normal'){ const id=oc.getImageData(0,0,vW,vH); applyFilter(id,filter); oc.putImageData(id,0,0); }
-
-  ctx.save(); ctx.translate(W,0); ctx.scale(-1,1);
-  ctx.drawImage(off,srcX,srcY,srcW,srcH,0,0,W,H);
-  ctx.restore();
-
-  if(res&&res.multiHandLandmarks) for(const lms of res.multiHandLandmarks) drawHand(lms,W,H);
-}
-
-// ── Hand skeleton ─────────────────────────────────────────────
-const CONN=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
-function drawHand(lms,W,H){
-  ctx.save();
-  ctx.strokeStyle='rgba(0,229,255,.8)'; ctx.lineWidth=2.5;
-  for(const[a,b]of CONN){ ctx.beginPath(); ctx.moveTo((1-lms[a].x)*W,lms[a].y*H); ctx.lineTo((1-lms[b].x)*W,lms[b].y*H); ctx.stroke(); }
-  for(const lm of lms){ ctx.beginPath(); ctx.arc((1-lm.x)*W,lm.y*H,5,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='#00e5ff'; ctx.lineWidth=1.5; ctx.stroke(); }
-  ctx.restore();
-}
-
-// ── Gesture label ─────────────────────────────────────────────
-const GL={FIST:'✊ Capture!',OPEN:'✋ Open Palm',POINT_UP:'☝️ Zoom In',POINT_DOWN:'👇 Zoom Out',POINT:'👆 Pointing',PEACE:'✌️ Reset Zoom',PINCH:'🤏 Pinch Zoom',SWIPE_L:'👈 Prev Filter',SWIPE_R:'👉 Next Filter',UNKNOWN:'🤔 …'};
-function showGesture(g){ gestureLabel.textContent=GL[g]||g; clearTimeout(gestureTimer); gestureTimer=setTimeout(()=>{gestureLabel.textContent='✋ Show your hand';},1500); }
-
-// ── Screenshot ────────────────────────────────────────────────
-function takeScreenshot(){
-  if(!captureReady) return; captureReady=false;
-  flash.style.opacity='.9'; setTimeout(()=>{flash.style.opacity='0';},120);
-  const t=document.createElement('canvas'); t.width=displayCanvas.width; t.height=displayCanvas.height;
-  t.getContext('2d').drawImage(displayCanvas,0,0);
-  const url=t.toDataURL('image/jpeg',.85);
-  const img=document.createElement('img'); img.src=url; img.title='Click to download';
-  img.addEventListener('click',()=>{ const a=document.createElement('a'); a.href=url; a.download=`handcam_${Date.now()}.jpg`; a.click(); });
-  gallery.prepend(img);
-  setTimeout(()=>{captureReady=true;},1500);
-}
-
-function showSwipe(dir){
-  swipeArrow.textContent=dir==='L'?'👈':'👉'; swipeArrow.style.opacity='1';
-  setTimeout(()=>{swipeArrow.style.opacity='0';},600);
-}
-
-// ── MediaPipe ─────────────────────────────────────────────────
-const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:.7,minTrackingConfidence:.6});
-
-let lastRes=null;
-hands.onResults(results=>{
-  lastRes=results; renderFrame(video,results);
-  if(!results.multiHandLandmarks||!results.multiHandLandmarks.length){lastHandX=null;pinchPrev=null;swipeBlocked=false;return;}
-  const lms=results.multiHandLandmarks[0];
-  const gesture=detectGesture(lms);
-
-  if(gesture==='PINCH'){
-    const dist=Math.hypot(lms[4].x-lms[8].x,lms[4].y-lms[8].y);
-    if(pinchPrev!==null){const d=(dist-pinchPrev)*8;zoomLevel=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,zoomLevel+d));zoomIndicator.textContent=`🔍 Zoom: ${zoomLevel.toFixed(1)}×`;}
-    pinchPrev=dist; showGesture('PINCH'); lastHandX=null; return;
+  // Sparkle particles randomly along trail
+  if (Math.random() < 0.35 && trail.length > 3) {
+    const sp = trail[Math.floor(Math.random() * Math.min(8, trail.length))];
+    particles.push(new Spark(sp.x, sp.y, sp.hue));
   }
-  pinchPrev=null;
+}
 
-  if(gesture==='POINT_UP'){zoomLevel=Math.min(ZOOM_MAX,zoomLevel+ZOOM_STEP);zoomIndicator.textContent=`🔍 Zoom: ${zoomLevel.toFixed(1)}×`;showGesture('POINT_UP');lastHandX=null;return;}
-  if(gesture==='POINT_DOWN'){zoomLevel=Math.max(ZOOM_MIN,zoomLevel-ZOOM_STEP);zoomIndicator.textContent=`🔍 Zoom: ${zoomLevel.toFixed(1)}×`;showGesture('POINT_DOWN');lastHandX=null;return;}
-  if(gesture==='FIST'){showGesture('FIST');takeScreenshot();lastHandX=null;return;}
-  if(gesture==='PEACE'){zoomLevel=1.0;zoomIndicator.textContent='🔍 Zoom: 1.0×';showGesture('PEACE');return;}
+// ═══════════════════════════════════════════════════════════════
+//  Spark (tiny trail sparkles)
+// ═══════════════════════════════════════════════════════════════
+class Spark {
+  constructor(x, y, h) {
+    this.x = x; this.y = y;
+    this.vx = (Math.random() - .5) * 2.5;
+    this.vy = (Math.random() - .5) * 2.5 - 1;
+    this.hue = h;
+    this.life = 1;
+    this.decay = .04 + Math.random() * .04;
+    this.size = 1.5 + Math.random() * 2.5;
+    this.isStar = Math.random() < .4;
+  }
+  update() { this.x += this.vx; this.y += this.vy; this.vy += .04; this.life -= this.decay; }
+  draw(ctx) {
+    const s = this.size * (this.isStar ? .8 + .2 * Math.sin(frameCount * .3 + this.x) : 1);
+    ctx.globalAlpha = this.life;
+    setGlow(ctx, `hsl(${this.hue},100%,75%)`, 8);
+    ctx.fillStyle = `hsl(${this.hue},100%,90%)`;
+    if (this.isStar) { drawStar(ctx, this.x, this.y, 4, s, s * .45); ctx.fill(); }
+    else { ctx.beginPath(); ctx.arc(this.x, this.y, s, 0, Math.PI*2); ctx.fill(); }
+    ctx.globalAlpha = 1; noGlow(ctx);
+  }
+  isDead() { return this.life <= 0; }
+}
 
-  if(gesture==='OPEN'){
-    showGesture('OPEN');
-    const palmX=lms[9].x;
-    if(lastHandX!==null&&!swipeBlocked){
-      const dx=lastHandX-palmX;
-      if(Math.abs(dx)>0.08){
-        swipeBlocked=true;
-        if(dx>0){filterIndex=(filterIndex+1)%FILTERS.length;filterLabel.textContent=`🎨 ${FILTERS[filterIndex]}`;showGesture('SWIPE_R');showSwipe('R');}
-        else{filterIndex=(filterIndex-1+FILTERS.length)%FILTERS.length;filterLabel.textContent=`🎨 ${FILTERS[filterIndex]}`;showGesture('SWIPE_L');showSwipe('L');}
-        lastHandX=null; setTimeout(()=>{swipeBlocked=false;},700); return;
+// ═══════════════════════════════════════════════════════════════
+//  Bloom Flower
+// ═══════════════════════════════════════════════════════════════
+class BloomFlower {
+  constructor(x, y, h) {
+    this.x = x; this.y = y;
+    this.hue   = h;
+    this.age   = 0;
+    this.petals= 5 + Math.floor(Math.random() * 4);   // 5-8 petals
+    this.maxR  = 60 + Math.random() * 50;
+    this.life  = 200 + Math.floor(Math.random() * 80);
+    this.rotOff= Math.random() * Math.PI * 2;
+    this.layers= 2;  // inner + outer petals
+  }
+
+  update() { this.age++; }
+
+  draw(ctx) {
+    const bloom  = Math.min(1, this.age / 40);           // 0→1 as petals open
+    const dying  = this.age > this.life - 50;
+    const fade   = dying ? (this.life - this.age) / 50 : 1;
+    const r      = this.maxR * bloom;
+    const rot    = this.rotOff + this.age * 0.005;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.globalAlpha = fade;
+
+    // ── Outer petals ──
+    for (let i = 0; i < this.petals; i++) {
+      const a = rot + (i / this.petals) * Math.PI * 2;
+      ctx.save();
+      ctx.rotate(a);
+      const ph = this.hue + i * 12;
+      const g  = ctx.createLinearGradient(0, 0, 0, r);
+      g.addColorStop(0,   `hsla(${ph},100%,92%,.95)`);
+      g.addColorStop(.45, `hsla(${ph+15},90%,68%,.80)`);
+      g.addColorStop(1,   `hsla(${ph+35},80%,50%,.05)`);
+      ctx.fillStyle   = g;
+      setGlow(ctx, `hsl(${ph},100%,70%)`, 18);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo( r*.38, -r*.2,  r*.38, r*.2, 0, r);
+      ctx.bezierCurveTo(-r*.38,  r*.2, -r*.38, -r*.2, 0, 0);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ── Inner petals (rotated 180/petals) ──
+    const rInner = r * .55;
+    for (let i = 0; i < this.petals; i++) {
+      const a = rot + Math.PI / this.petals + (i / this.petals) * Math.PI * 2;
+      ctx.save();
+      ctx.rotate(a);
+      const ph = this.hue + 40 + i * 12;
+      const g  = ctx.createLinearGradient(0, 0, 0, rInner);
+      g.addColorStop(0,   `hsla(${ph},100%,96%,.9)`);
+      g.addColorStop(.5,  `hsla(${ph+20},90%,72%,.7)`);
+      g.addColorStop(1,   `hsla(${ph+40},80%,55%,.05)`);
+      ctx.fillStyle = g;
+      setGlow(ctx, `hsl(${ph},100%,75%)`, 12);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo( rInner*.32, -rInner*.18,  rInner*.32, rInner*.18, 0, rInner);
+      ctx.bezierCurveTo(-rInner*.32,  rInner*.18, -rInner*.32, -rInner*.18, 0, 0);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ── Centre stamen ──
+    const cr = r * .17 * bloom;
+    const cg = ctx.createRadialGradient(0,0,0, 0,0, cr);
+    cg.addColorStop(0,   `hsla(${this.hue+60},100%,98%,1)`);
+    cg.addColorStop(.5,  `hsla(${this.hue+30},100%,82%,.85)`);
+    cg.addColorStop(1,   `hsla(${this.hue},90%,62%,0)`);
+    ctx.fillStyle = cg;
+    setGlow(ctx, `hsl(${this.hue+60},100%,90%)`, 22);
+    ctx.beginPath();
+    ctx.arc(0, 0, cr, 0, Math.PI*2);
+    ctx.fill();
+
+    // Stamen dots ring
+    if (cr > 4) {
+      ctx.fillStyle = `hsla(${this.hue+70},100%,96%,0.9)`;
+      setGlow(ctx, `hsl(${this.hue+60},100%,90%)`, 10);
+      for (let i = 0; i < 8; i++) {
+        const da = (i/8)*Math.PI*2 + this.age*.02;
+        const dx = Math.cos(da)*cr*1.3, dy = Math.sin(da)*cr*1.3;
+        ctx.beginPath();
+        ctx.arc(dx, dy, 2.5, 0, Math.PI*2);
+        ctx.fill();
       }
     }
-    lastHandX=palmX; return;
+
+    noGlow(ctx);
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
-  lastHandX=null; showGesture(gesture);
+
+  isDead() { return this.age > this.life; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Particle (burst + star dust)
+// ═══════════════════════════════════════════════════════════════
+class Particle {
+  constructor(x, y, h, type = 'burst') {
+    this.x = x; this.y = y; this.type = type;
+    const spd   = type === 'burst' ? 8 + Math.random()*12 : 1.5 + Math.random()*3;
+    const angle = type === 'burst'
+      ? Math.random()*Math.PI*2
+      : -Math.PI*.5 + (Math.random()-.5)*1.4;
+    this.vx    = Math.cos(angle)*spd;
+    this.vy    = Math.sin(angle)*spd;
+    this.hue   = h + Math.random()*70 - 35;
+    this.life  = 1;
+    this.decay = type === 'burst' ? .011+Math.random()*.014 : .018+Math.random()*.016;
+    this.size  = type === 'burst' ? 3+Math.random()*5 : 2+Math.random()*3.5;
+    this.isStar= type === 'star' || (type === 'burst' && Math.random()<.3);
+    this.twink = Math.random()*Math.PI*2;
+    this.hist  = [];
+  }
+
+  update() {
+    this.hist.unshift({x:this.x, y:this.y});
+    if (this.hist.length > 7) this.hist.pop();
+    this.x    += this.vx;
+    this.y    += this.vy;
+    this.vy   += this.type==='burst' ? .28 : .06;
+    this.vx   *= .985;
+    this.life -= this.decay;
+    this.twink+= .18;
+  }
+
+  draw(ctx) {
+    const s = this.isStar
+      ? this.size * (.75 + .25*Math.sin(this.twink))
+      : this.size;
+
+    // Trail ghost
+    for (let i = 0; i < this.hist.length; i++) {
+      const a = this.life * (1-i/this.hist.length) * .35;
+      ctx.fillStyle = `hsla(${this.hue},100%,72%,${a})`;
+      ctx.beginPath();
+      ctx.arc(this.hist[i].x, this.hist[i].y, s*(1-i/this.hist.length)*.65, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = this.life;
+    setGlow(ctx, `hsl(${this.hue},100%,72%)`, 14);
+    ctx.fillStyle = `hsl(${this.hue},100%,82%)`;
+
+    if (this.isStar) { drawStar(ctx, this.x, this.y, 5, s, s*.42); ctx.fill(); }
+    else             { ctx.beginPath(); ctx.arc(this.x, this.y, s, 0, Math.PI*2); ctx.fill(); }
+
+    noGlow(ctx); ctx.globalAlpha = 1;
+  }
+
+  isDead() { return this.life <= 0; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Ripple
+// ═══════════════════════════════════════════════════════════════
+class Ripple {
+  constructor(x, y, h) {
+    this.x = x; this.y = y; this.hue = h;
+    this.r    = 2;
+    this.maxR = 170 + Math.random()*60;
+    this.spd  = 4 + Math.random()*2;
+    this.life = 1;
+    this.rings= 5;
+  }
+  update() { this.r += this.spd; this.life = 1 - this.r/this.maxR; }
+  draw(ctx) {
+    for (let i = 0; i < this.rings; i++) {
+      const r = this.r - i*24; if (r <= 0) continue;
+      const a = this.life * (1-i/this.rings) * .9;
+      ctx.strokeStyle = `hsla(${this.hue+i*18},100%,72%,${a})`;
+      ctx.lineWidth   = 2.8 - i*.4;
+      setGlow(ctx, `hsl(${this.hue+i*18},100%,72%)`, 14);
+      ctx.beginPath(); ctx.arc(this.x, this.y, r, 0, Math.PI*2); ctx.stroke();
+    }
+    noGlow(ctx);
+  }
+  isDead() { return this.life <= 0; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Geometry Shape (Peace gesture)
+// ═══════════════════════════════════════════════════════════════
+class GeomShape {
+  constructor(x1, y1, x2, y2, h) {
+    this.hue  = h;
+    this.life = 1;
+    this.decay= .005;
+    this.cx   = (x1+x2)/2; this.cy = (y1+y2)/2;
+    const dist = Math.hypot(x2-x1, y2-y1);
+    const r    = Math.max(35, dist * .7);
+    const sides= 3 + Math.floor(Math.random()*3); // 3-5
+    this.pts   = [];
+    for (let i = 0; i < sides; i++) {
+      const a = (i/sides)*Math.PI*2 - Math.PI*.5;
+      this.pts.push({ x: this.cx+Math.cos(a)*r, y: this.cy+Math.sin(a)*r });
+    }
+    this.rot  = 0;
+    this.rotS = (Math.random()-.5)*.014;
+    // Mandala rings (3 nested)
+    this.rings= [r, r*.65, r*.35];
+  }
+
+  update() { this.life -= this.decay; this.rot += this.rotS; }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.cx, this.cy);
+    ctx.rotate(this.rot);
+    ctx.translate(-this.cx, -this.cy);
+    ctx.globalAlpha = this.life;
+
+    // Outer polygon + inner connections
+    const colours = [this.hue, this.hue+60, this.hue+120];
+    for (let ri = 0; ri < this.rings.length; ri++) {
+      const rScale = this.rings[ri] / this.rings[0];
+      const h2 = colours[ri];
+      ctx.strokeStyle = `hsl(${h2},100%,70%)`;
+      ctx.lineWidth   = 2.2 - ri*.5;
+      setGlow(ctx, `hsl(${h2},100%,70%)`, 16 - ri*4);
+      ctx.beginPath();
+      ctx.moveTo(
+        this.cx + (this.pts[0].x - this.cx)*rScale,
+        this.cy + (this.pts[0].y - this.cy)*rScale
+      );
+      for (const p of this.pts)
+        ctx.lineTo(this.cx+(p.x-this.cx)*rScale, this.cy+(p.y-this.cy)*rScale);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Star connections between vertices
+    ctx.strokeStyle = `hsla(${this.hue+80},100%,72%,.45)`;
+    ctx.lineWidth   = 1;
+    setGlow(ctx, `hsl(${this.hue+80},100%,72%)`, 8);
+    for (let i = 0; i < this.pts.length; i++)
+      for (let j = i+2; j < this.pts.length; j++) {
+        ctx.beginPath();
+        ctx.moveTo(this.pts[i].x, this.pts[i].y);
+        ctx.lineTo(this.pts[j].x, this.pts[j].y);
+        ctx.stroke();
+      }
+
+    // Vertex dots
+    ctx.fillStyle = `hsl(${this.hue+40},100%,88%)`;
+    setGlow(ctx, `hsl(${this.hue+40},100%,88%)`, 12);
+    for (const p of this.pts) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
+    }
+
+    noGlow(ctx); ctx.globalAlpha = 1; ctx.restore();
+  }
+
+  isDead() { return this.life <= 0; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Hand Skeleton Renderer
+// ═══════════════════════════════════════════════════════════════
+const CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],[0,17]
+];
+const TIPS = new Set([4,8,12,16,20]);
+
+function drawHand(lms, h) {
+  const col = `hsl(${h},100%,72%)`;
+
+  // Connections
+  hc.strokeStyle = col; hc.lineWidth = 2.8;
+  setGlow(hc, col, 14);
+  for (const [a,b] of CONNECTIONS) {
+    hc.beginPath();
+    hc.moveTo(lmX(lms[a]), lmY(lms[a]));
+    hc.lineTo(lmX(lms[b]), lmY(lms[b]));
+    hc.stroke();
+  }
+
+  // Landmark dots
+  lms.forEach((lm, idx) => {
+    const x = lmX(lm), y = lmY(lm);
+    const tip = TIPS.has(idx);
+    hc.beginPath();
+    hc.arc(x, y, tip ? 8 : 5, 0, Math.PI*2);
+    hc.fillStyle = tip ? `hsl(${h},100%,92%)` : 'rgba(255,255,255,.82)';
+    setGlow(hc, tip ? col : 'rgba(255,255,255,.5)', tip ? 22 : 8);
+    hc.fill();
+  });
+
+  noGlow(hc);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Mode badge
+// ═══════════════════════════════════════════════════════════════
+const MODES = {
+  POINT: { icon:'☝️', label:'Paint Trail',      color:'#ff6b9d' },
+  OPEN:  { icon:'✋', label:'Bloom Flowers 🌸',  color:'#ffd32a' },
+  PEACE: { icon:'✌️', label:'Draw Geometry 🔺',  color:'#a29bfe' },
+  FIST:  { icon:'✊', label:'Particle Burst! 💥', color:'#fd79a8' },
+  PINCH: { icon:'🤏', label:'Ripple Rings 💧',   color:'#74b9ff' },
+  OTHER: { icon:'🤔', label:'Keep trying…',      color:'#636e72' },
+  NONE:  { icon:'✋', label:'Show your hand',    color:'rgba(255,255,255,.55)' },
+};
+const badge = document.getElementById('modeBadge');
+function updateBadge(g) {
+  const m = MODES[g] || MODES.NONE;
+  badge.textContent    = `${m.icon}  ${m.label}`;
+  badge.style.color        = m.color;
+  badge.style.borderColor  = m.color + '44';
+  badge.style.boxShadow    = `0 0 24px ${m.color}33, 0 0 60px ${m.color}11`;
+}
+updateBadge('NONE');
+
+// ═══════════════════════════════════════════════════════════════
+//  Clear
+// ═══════════════════════════════════════════════════════════════
+function clearAll() {
+  pc.clearRect(0, 0, W, H);
+  particles = []; ripples = []; flowers = []; shapes = [];
+  trail = [];
+}
+document.getElementById('clearBtn').addEventListener('click', clearAll);
+document.addEventListener('keydown', e => { if (e.code === 'Space') clearAll(); });
+
+// ═══════════════════════════════════════════════════════════════
+//  Main render loop
+// ═══════════════════════════════════════════════════════════════
+let flowerTimer = 0, lastBurst = -99, lastRipple = -99, lastGeom = -99;
+const MAX_PARTICLES = 600;
+
+function animate() {
+  requestAnimationFrame(animate);
+  frameCount++;
+  globalHue = (globalHue + .25) % 360;
+
+  // Clear hand canvas every frame
+  hc.clearRect(0, 0, W, H);
+
+  // Slow fade on anim canvas
+  ac.fillStyle = 'rgba(3,3,15,.22)';
+  ac.fillRect(0, 0, W, H);
+
+  // Ultra-slow fade on persist canvas (paint lingers)
+  pc.fillStyle = 'rgba(3,3,15,.007)';
+  pc.fillRect(0, 0, W, H);
+
+  // Draw paint trail onto persist canvas
+  drawTrail();
+
+  // Update & draw all effects
+  flowers   = flowers.filter(f => { if(f.isDead()) return false; f.update(); f.draw(ac); return true; });
+  shapes    = shapes.filter(s  => { if(s.isDead()) return false; s.update(); s.draw(ac); return true; });
+  ripples   = ripples.filter(r => { if(r.isDead()) return false; r.update(); r.draw(ac); return true; });
+  particles = particles.filter(p => { if(p.isDead()) return false; p.update(); p.draw(ac); return true; });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MediaPipe Hands
+// ═══════════════════════════════════════════════════════════════
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:.75, minTrackingConfidence:.65 });
+
+hands.onResults(results => {
+  // ── Draw webcam to camCanvas (mirrored, letterboxed) ──
+  cc.save();
+  cc.translate(W, 0); cc.scale(-1, 1);
+  const vW = rawVideo.videoWidth||640, vH = rawVideo.videoHeight||480;
+  const va = vW/vH, sa = W/H;
+  let dw, dh, dx, dy;
+  if (sa > va) { dw=W; dh=W/va; dx=0; dy=(H-dh)/2; }
+  else         { dh=H; dw=H*va; dx=(W-dw)/2; dy=0; }
+  cc.drawImage(rawVideo, -dx, dy, dw, dh);
+  cc.restore();
+
+  if (!results.multiHandLandmarks?.length) {
+    trail = []; updateBadge('NONE'); return;
+  }
+
+  const lms     = results.multiHandLandmarks[0];
+  const gesture = detectGesture(lms);
+  const h       = getHue(lmX(lms[9]));
+
+  // Smooth landmark positions
+  sPalm.x = lerp(sPalm.x, lmX(lms[9]),  .30);
+  sPalm.y = lerp(sPalm.y, lmY(lms[9]),  .30);
+  sTip8.x = lerp(sTip8.x, lmX(lms[8]), .40);
+  sTip8.y = lerp(sTip8.y, lmY(lms[8]), .40);
+  sTip12.x= lerp(sTip12.x, lmX(lms[12]),.40);
+  sTip12.y= lerp(sTip12.y, lmY(lms[12]),.40);
+
+  if (gesture !== prevMode) {
+    updateBadge(gesture);
+    if (gesture !== 'POINT') trail = [];
+    prevMode = gesture;
+  }
+
+  // ── Gesture effects ──────────────────────────────────
+  switch (gesture) {
+
+    case 'POINT':
+      pushTrailPoint(sTip8.x, sTip8.y, h);
+      break;
+
+    case 'OPEN':
+      flowerTimer++;
+      // Bloom a new flower every 28 frames from palm (slight random offset)
+      if (flowerTimer % 28 === 0 && flowers.length < 14) {
+        flowers.push(new BloomFlower(
+          sPalm.x + (Math.random()-.5)*50,
+          sPalm.y + (Math.random()-.5)*50,
+          h + Math.random()*40 - 20
+        ));
+      }
+      // Star dust from each fingertip
+      [8,12,16,20,4].forEach(idx => {
+        if (Math.random() < .25 && particles.length < MAX_PARTICLES) {
+          particles.push(new Particle(lmX(lms[idx]), lmY(lms[idx]), h, 'star'));
+        }
+      });
+      break;
+
+    case 'PEACE':
+      // New geometry shape every 18 frames
+      if (frameCount - lastGeom > 18 && shapes.length < 20) {
+        shapes.push(new GeomShape(sTip8.x, sTip8.y, sTip12.x, sTip12.y, h));
+        lastGeom = frameCount;
+      }
+      break;
+
+    case 'FIST':
+      // Burst every 45 frames
+      if (frameCount - lastBurst > 45 && particles.length < MAX_PARTICLES - 70) {
+        for (let i = 0; i < 72; i++)
+          particles.push(new Particle(sPalm.x, sPalm.y, h, 'burst'));
+        lastBurst = frameCount;
+      }
+      break;
+
+    case 'PINCH':
+      if (frameCount - lastRipple > 10) {
+        ripples.push(new Ripple(sTip8.x, sTip8.y, h));
+        lastRipple = frameCount;
+      }
+      break;
+  }
+
+  // Always draw hand skeleton
+  drawHand(lms, h);
 });
 
-// ── Camera ────────────────────────────────────────────────────
-async function startCamera(){
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'},audio:false});
-    video.srcObject=stream; await video.play();
-    const cam=new Camera(video,{onFrame:async()=>{ await hands.send({image:video}); },width:640,height:480});
+// ═══════════════════════════════════════════════════════════════
+//  Camera
+// ═══════════════════════════════════════════════════════════════
+async function startCamera() {
+  document.getElementById('startScreen').style.display = 'none';
+  const ld = document.getElementById('loading');
+  const lt = document.getElementById('loadText');
+  ld.style.display = 'flex';
+  lt.textContent   = 'Starting camera…';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width:640, height:480, facingMode:'user' }, audio: false
+    });
+    rawVideo.srcObject = stream;
+    await rawVideo.play();
+
+    const cam = new Camera(rawVideo, {
+      onFrame: async () => { await hands.send({ image: rawVideo }); },
+      width: 640, height: 480
+    });
     cam.start();
-  } catch(e){
-    loading.innerHTML=`<div style="color:#ff5252;font-size:18px;text-align:center;padding:20px">❌ Webcam access denied.<br><br><small style="color:#888">Please allow camera permission and refresh.</small></div>`;
-    loading.style.display='flex';
+    ld.style.display = 'none';
+  } catch(e) {
+    lt.textContent = '❌ Camera access denied — refresh & allow';
+    document.getElementById('loadSub').textContent = e.message;
   }
 }
 
-// ── Init ──────────────────────────────────────────────────────
-window.addEventListener('load', async()=>{
+// ═══════════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('load', async () => {
   await hands.initialize();
-  loading.style.display='none';
-  startBtn.style.display='block';
-  startBtn.addEventListener('click', async()=>{ startBtn.style.display='none'; await startCamera(); });
+  document.getElementById('loading').style.display    = 'none';
+  document.getElementById('startScreen').style.display = 'flex';
+  document.getElementById('startBtn').addEventListener('click', startCamera);
+  animate(); // Start render loop immediately (shows background)
 });
 </script>
 </body>
